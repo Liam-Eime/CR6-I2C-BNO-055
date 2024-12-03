@@ -1,0 +1,77 @@
+'CR6 Datalogger, I2C for BNO-055
+'Date: 03/12/2024
+'Program author: Liam Eime
+
+'The following program demonstrates reading/writing data from/to an I2C device; the BNO-055.
+
+'The current version of the program performs the following:
+  'Reads the device chip ID.
+  'Configures the units: Celcius for temperature, Degress for angles, rps for gyroscope, and mg for accelerometer.
+  'Configures the operating mode to be 'NDOF', one of the fusion methods with all sensors available for reading.
+  'Reads the raw accelerometer data; all three axes. This is done in the way of the Help documentation example.
+  
+'The current version of the program experiences the following potential issues:
+  'The accelerometer readings seem to behave quite strange. This is likely due to how the raw data read in accel_tmp()
+    'is being handled.
+
+'Declare Constants
+Const PERIPHERAL_reg As Long = &H28  'I2C address of peripheral/slave device
+
+'Declare Public Variables
+Public CHIP_ID_reg As Long = &H00000000  'Value to send to access chip ID register
+Public CHIP_ID As Long  'Return value for CHIP_ID, should be 0xA0 (160)
+
+Public UNIT_SEL_reg As Long = &H3B810000  'Write 0x81 (10000001) to register 0x3B (UNIT_SEL)
+Public UNIT_SEL As Long  'For confirming UNIT_SEL, should be 129
+
+Public OPR_MODE_reg As Long = &H3D1C0000  'Write 0x1C (00011100) to register 0x3D (OPR_MODE)
+Public OPR_MODE As Long  'For confirming OPR_MODE, should be 28
+
+Public ACC_DATA_X_LSB_reg As Long = &H28000000  'Value to send to access accelerometer x axis data LSB
+
+Public ACC_X_RAW As Long
+Public ACC_Y_RAW As Long
+Public ACC_Z_RAW As Long
+
+'Declare Private Variables
+Dim tmp As Long
+Dim accel_tmp(2) As Long
+
+'Main Program
+BeginProg
+  
+  PortSet (C3,1)
+  I2COpen (C1,100000)  'I2C standard mode bitrate = 100kHz
+  Delay (0,1,Sec)  'BNO055 start-up time is 400ms. 
+                   'And 650ms from reset to config mode.
+  
+  'Configuration
+    'Read the chip ID
+    I2CWrite (C1,PERIPHERAL_reg,CHIP_ID_reg,1,&H02)  '&H02 = Start with no stop at the end  
+    I2CRead (C1,PERIPHERAL_reg,tmp,1,&H05)  '&H05 = Restart, Then Stop at the End
+    MoveBytes (CHIP_ID,3,tmp,0,1)
+    
+    'Configure units
+    I2CWrite (C1,PERIPHERAL_reg,UNIT_SEL_reg,2,&H02)
+    I2CRead (C1,PERIPHERAL_reg,tmp,1,&H05)
+    MoveBytes (UNIT_SEL,3,tmp,0,1)
+
+  Delay (0,7,mSec)  '7mSec delay required to swap from config mode to operation mode for BNO-055
+    
+  'Enable operation mode, existing config mode
+  I2CWrite (C1,PERIPHERAL_reg,OPR_MODE_reg,2,&H02)
+  I2CRead (C1,PERIPHERAL_reg,tmp,1,&H05)
+  MoveBytes (OPR_MODE,3,tmp,0,1)
+  
+  Scan (100,mSec,0,0)
+    
+    'Read accelerometer data registers. I2C reads registers sequentially
+    I2CWrite (C1,PERIPHERAL_reg,ACC_DATA_X_LSB_reg,1,&H02)
+    I2CRead (C1,PERIPHERAL_reg,accel_tmp(),6,&H05)
+    MoveBytes (ACC_X_RAW,2,accel_tmp(),0,2)
+    MoveBytes (ACC_Y_RAW,2,accel_tmp(),2,2)
+    MoveBytes (ACC_Z_RAW,2,accel_tmp(),4,2)
+    
+  NextScan
+
+EndProg
